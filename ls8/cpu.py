@@ -9,7 +9,9 @@ class CPU:
         """Construct a new CPU."""
         self.ram = [0] * 256
         self.reg = [0] * 8
-        self.PC = 0
+        self.pc = 0
+        self.ir = None
+        self.fl = 0
 
     def load(self):
         """Load a program into memory."""
@@ -64,4 +66,22 @@ class CPU:
 
     def run(self):
         """Run the CPU."""
-        pass
+        running = True
+
+        while running:
+            memory_address = self.pc
+            self.ir = memory_address
+            operand_a = self.ram_read(self.pc + 1)
+            operand_b = self.ram_read(self.pc + 2)
+            # depending on the opcode 
+            # fill this in
+
+            self.pc += 3
+
+
+
+    def ram_read(self, MAR):
+        return self.ram[MAR]
+
+    def ram_write(self, MAR, MDR):
+        self.ram[MAR] = MDR
