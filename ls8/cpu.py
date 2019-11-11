@@ -1,7 +1,6 @@
 # cpu
 import sys
 
-
 class CPU:
     def __init__(self):
         self.registers = [0b0] * 8
