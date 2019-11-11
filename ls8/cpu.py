@@ -1,174 +1,153 @@
-"""CPU functionality."""
-
+# cpu
 import sys
 
-HLT = 0b00000001
-LDI = 0b10000010
-PRN = 0b01000111
-MUL = 0b10100010
-POP = 0b01000110 
-PUSH = 0b01000101
-RET = 0b00010001
-CALL = 0b01010000
-JMP = 0b01010100
-JEQ = 0b01010101 
-JNE = 0b01010110 
-CMP = 0b10100111
 
 class CPU:
-    """Main CPU class."""
-
     def __init__(self):
-        """Construct a new CPU."""
-        self.ram = [0] * 256
-        self.reg = [0] * 8
-        self.pc = 0               
-        self.fl = 6               
-        self.SP = 7          
+        self.registers = [0b0] * 8
+        self.pc = 0
+        self.ir = None
+        self.ram = [0b0] * 0xFF
+        self.spl = 8 - 1
+        self.registers[self.spl] = 0xF4
 
-    def load(self, program):
-        """Load a program into memory."""
+        self.OPCODES = {
+            0b10000010: 'LDI',
+            0b01000111: 'PRN',
+            0b00000001: 'HLT',
+            0b10100000: 'ADD',
+            0b10100010: 'MUL',
+            0b01000110: 'POP',
+            0b01000101: 'PUSH',
+            0b10000100: 'ST',
+            0b01010000: 'CALL',
+            0b00010001: 'RET',
+        }
 
-        address = 0
-
+    def load(self, filename):
         try:
-            with open(program) as file:
-                for line in file:
-                    comment_split = line.split('#')
-                    maybe_command = comment_split[0].strip()
+            with open(filename, 'r') as f:
+                lines = (line for line in f.readlines() if not (
+                    line[0] == '#' or line[0] == '\n'))
+                program = [int(line.split('#')[0].strip(), 2)
+                           for line in lines]
+            address = 0
 
-                    if maybe_command == '':
-                        continue
-                    self.ram[address] = int(maybe_command, 2)
-
-                    address +=1
-        except FileNotFoundError:
-            print('File does not exist')
-
+            for instruction in program:
+                self.ram[address] = instruction
+                address += 1
+        except FileNotFoundError as e:
+            print(e)
+            sys.exit()
 
     def alu(self, op, reg_a, reg_b):
-        """ALU operations."""
-
+        # addition
         if op == "ADD":
-            self.reg[reg_a] += self.reg[reg_b]
-        if op == "MUL":
-            self.reg[reg_a] *= self.reg[reg_b]
-        if op == "CMP":
-            result = 0
-            if self.reg[reg_a] == self.reg[reg_b]:
-                result = 1
-            elif self.reg[reg_a] > self.reg[reg_b]:
-                result = 2
-            elif self.reg[reg_a] < self.reg[reg_b]:
-                result = 4
-
-            self.reg[self.fl] = result
-            self.pc += 3
+            self.registers[reg_a] += self.registers[reg_b]
+        # multiplication
+        elif op == "MUL":
+            self.registers[reg_a] *= self.registers[reg_b]
+        # compare
         else:
-            raise Exception("Unsupported ALU operation")
+            raise Exception("ALU operation not supported!")
 
     def trace(self):
-        """
-        Handy function to print out the CPU state. You might want to call this
-        from run() if you need help debugging.
-        """
-
         print(f"TRACE: %02X | %02X %02X %02X |" % (
             self.pc,
             self.ram_read(self.pc),
             self.ram_read(self.pc + 1),
             self.ram_read(self.pc + 2)
         ), end='')
-
         for i in range(8):
-            print(" %02X" % self.reg[i], end='')
-
+            print(" %02X" % self.registers[i], end='')
         print()
 
+    def ram_read(self, addr):
+        return self.ram[addr]
+
+    def ram_write(self, value, addr):
+        self.ram[addr] = value
+
+    def ldi(self):
+        reg = self.ram[self.pc + 1]
+        val = self.ram[self.pc + 2]
+        self.registers[reg] = val
+        self.pc += 3
+
+    def prn(self):
+        reg = self.ram[self.pc + 1]
+        val = self.registers[reg]
+        print(f"hex val: {val:x}\tdec val: {val}")
+        self.pc += 2
+
+    def aluf(self, op):
+        reg_a = self.ram[self.pc + 1]
+        reg_b = self.ram[self.pc + 2]
+        self.alu(op, reg_a, reg_b)
+        self.pc += 3
+
+    def push(self):
+        reg = self.ram[self.pc + 1]
+        val = self.registers[reg]
+        self.registers[self.spl] -= 1
+        self.ram[self.registers[self.spl]] = val
+        self.pc += 2
+
+    def pop(self):
+        reg = self.ram[self.pc + 1]
+        val = self.ram[self.registers[self.spl]]
+        self.registers[reg] = val
+        self.registers[self.spl] += 1
+        self.pc += 2
+
+    def st(self):
+        reg_a = self.ram[self.pc + 1]
+        reg_b = self.ram[self.pc + 2]
+        address_a = self.registers[reg_a]
+        val_b = self.registers[reg_b]
+        self.ram[address_a] = val_b
+        self.pc += 2
+
+    def call(self):
+        return_address = self.pc + 2
+        self.registers[self.spl] -= 1
+        val = self.registers[self.spl]
+        self.ram[val] = return_address
+
+        register_address = self.ram[self.pc + 1]
+        subroutine_location = self.registers[register_address]
+        self.pc = subroutine_location
+
+    def ret(self):
+        return_address = self.ram[self.spl]
+        self.registers[self.spl] += 1
+        self.pc = return_address
+
     def run(self):
-        """Run the CPU."""
         running = True
-
         while running:
-
-            ir = self.ram[self.pc]   
-            operand_a = self.ram_read(self.pc+1)
-            operand_b = self.ram_read(self.pc+2)
-
-            if ir == LDI:
-                print(f'LDI ir is: {ir}')
-                self.reg[operand_a] = operand_b
-                print(f'reg is now: {self.reg[operand_a]}')
-                self.pc += 3
-
-            elif ir == PRN:
-                print(f'PRN ir is: {ir}')
-                value = self.reg[operand_a]
-                print(value)
-                self.pc += 2
-
-            elif ir == MUL:
-                self.alu("MUL", operand_a, operand_b)
-                self.pc += 3
-                
-            elif ir == CMP:
-                self.alu("CMP", operand_a, operand_b)
-                self.pc += 3
-
-            elif ir == PUSH:
-                self.reg[7] -= 1
-
-                reg_address = self.ram[self.pc + 1]
-                value = self.reg[reg_address]
-
-                self.SP = self.reg[7]
-                self.ram[self.SP] = value
-
-                self.pc += 2
-
-            elif ir == POP:
-                self.SP = self.reg[7]
-                value = self.ram[self.SP]
-                target_reg_address = self.ram[self.pc + 1]
-                self.reg[target_reg_address] = value
-
-                self.reg[7] += 1
-
-                self.pc += 2
-            
-            elif ir == CALL:
-                self.reg[self.SP] -= 1
-                self.ram[self.reg[self.SP]] = self.pc + 2
-                self.pc = self.reg[operand_a]
-
-            elif ir == RET:
-                value = self.ram[self.reg[self.SP]]
-                self.pc = value
-
-                self.reg[self.SP] += 1
-            
-            elif ir == JMP:
-                self.pc = self.reg[operand_a]
-
-            elif ir == JEQ:
-                if self.reg[self.fl] == 1:
-                    self.pc = self.reg[operand_a]
-                else:
-                    self.pc += 2
-
-            elif ir == JNE:
-                if self.reg[self.fl] != 1:
-                    self.pc = self.reg[operand_a]
-                else:
-                    self.pc += 2
-
-            elif ir == HLT:
-                print(f'Entered HLT. CPU ending...')
-                running = False
-
-    def ram_read(self, MAR):
-        return self.ram[MAR]
-
-    def ram_write(self, MAR, MDR):
-        self.ram[MAR] = MDR
-    
+            self.ir = self.ram[self.pc]
+            try:
+                op = self.OPCODES[self.ir]
+                if op == 'LDI':
+                    self.ldi()
+                elif op == 'PRN':
+                    self.prn()
+                elif op == 'ADD' or op == 'MUL':
+                    self.aluf(op)
+                elif op == 'PUSH':
+                    self.push()
+                elif op == 'POP':
+                    self.pop()
+                elif op == 'ST':
+                    self.st()
+                elif op == 'CALL':
+                    self.call()
+                elif op == 'RET':
+                    self.ret()
+                elif op == 'HLT':
+                    running = False
+            except KeyError:
+                print(f"unknown command {self.ir}")
+                self.pc += 1
+        pass
