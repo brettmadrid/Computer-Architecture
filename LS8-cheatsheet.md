@@ -1,11 +1,12 @@
 # LS-8 Cheatsheet
+# OPCODES
 
 This document is non-authoritative. In cases where it differs from the spec, the
 spec is correct.
 
 ## ALU ops
 ```
-ADD  10100000 00000aaa 00000bbb
+ADD  = 0b10100000 00000aaa 00000bbb
 SUB  10100001 00000aaa 00000bbb
 MUL  10100010 00000aaa 00000bbb
 DIV  10100011 00000aaa 00000bbb
